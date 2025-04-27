@@ -49,7 +49,7 @@ def scrape():
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-dev-shm-usage")
     # nie musisz ustawiać binary_location, webdriver_manager to ogarnie
-    driver = webdriver.Chrome(service=Service("/usr/bin/chromedriver"), options=opts)
+    driver = webdriver.Chrome(service=Service("/var/lib/apt/lists"), options=opts)
     driver.get(url)
     WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME,"body")))
 
