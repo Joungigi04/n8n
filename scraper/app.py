@@ -1,3 +1,4 @@
+import os
 from flask import Flask, request, jsonify
 from scraper import scrape_product
 
@@ -18,5 +19,7 @@ def scrape():
     return jsonify(result), 200
 
 if __name__ == "__main__":
-    # w Dockerze Flask będzie dostępny na 0.0.0.0:3000
-    app.run(host="0.0.0.0", port=3000)
+    # pobierz port z ENV lub użyj domyślnie 3000
+    port = int(os.environ.get("PORT", 3000))
+    # Flask będzie nasłuchiwać na 0.0.0.0, dzięki temu Render przekieruje ruch
+    app.run(host="0.0.0.0", port=port)
