@@ -23,8 +23,7 @@ def get_difficulty_value(driver):
 def get_animal_value(driver):
     try:
         el = driver.find_element(By.CSS_SELECTOR, "[class*='animal-']")
-        cls = el.get_attribute("class")
-        m = re.search(r"animal-(\d+)", cls)
+        m = re.search(r"animal-(\d+)", el.get_attribute("class"))
         if not m:
             return None
         return "Bezpieczna dla zwierząt" if m.group(1) == "0" else "Szkodliwa dla zwierząt"
@@ -39,6 +38,34 @@ def get_scale_value(driver, selector):
     except:
         return None
 
+def get_short_description(driver):
+    """
+    Szuka krótkiego opisu w desktop i mobile view:
+    <div class="desktop-description-short"><p>…</p></div>
+    <div class="mobile-description-short"><p>…</p></div>
+    """
+    for sel in (".desktop-description-short p", ".mobile-description-short p"):
+        try:
+            el = driver.find_element(By.CSS_SELECTOR, sel)
+            txt = el.text.strip()
+            if txt:
+                return txt
+        except:
+            pass
+    return None
+
+def get_care_instructions(driver):
+    """
+    Znajduje nagłówek H3 zawierający słowo "Pielęgnacja"
+    i zwraca tekst pierwszego <p> po nim.
+    """
+    try:
+        xpath = "//h3[contains(normalize-space(.), 'Pielęgnacja')]/following-sibling::p[1]"
+        el = driver.find_element(By.XPATH, xpath)
+        return el.text.strip()
+    except:
+        return None
+
 @app.route('/scrape', methods=['POST'])
 def scrape():
     data = request.get_json(force=True)
@@ -46,47 +73,32 @@ def scrape():
     if not url:
         return jsonify({"error": "Brak URL"}), 400
 
-    # --- konfiguracja przeglądarki ---
-    options = webdriver.ChromeOptions()
-    options.add_argument("--headless")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
+    # uruchamiamy headless Chrome
+    opts = webdriver.ChromeOptions()
+    opts.add_argument("--headless")
+    opts.add_argument("--no-sandbox")
+    opts.add_argument("--disable-dev-shm-usage")
 
-    chromedriver_path = os.environ.get("CHROMEDRIVER_PATH", "/usr/bin/chromedriver")
-    service = Service(chromedriver_path)
-    driver = webdriver.Chrome(service=service, options=options)
-
-    # --- otwieramy stronę i czekamy aż się załaduje ---
+    service = Service("/usr/bin/chromedriver")
+    driver = webdriver.Chrome(service=service, options=opts)
     driver.get(url)
     WebDriverWait(driver, 10).until(
         EC.presence_of_element_located((By.TAG_NAME, "body"))
     )
 
-    # --- tytuł produktu ---
-    try:
-        title_el = driver.find_element(By.CSS_SELECTOR, "h1.product-title, h1[itemprop='name'], h1")
-        title = title_el.text.strip()
-    except:
-        title = None
+    # krótki opis
+    short_description  = get_short_description(driver)
+    # instrukcje pielęgnacji
+    care_instructions  = get_care_instructions(driver)
 
-    # --- cena ---
+    # ———- wyciąganie ceny ———-
     price = None
-    # 1) span[itemprop=price]
     try:
         el = driver.find_element(By.CSS_SELECTOR, "span[itemprop='price']")
         price = el.get_attribute("content") or el.text.strip()
     except:
         pass
 
-    # 2) fallback .current-price span
-    if not price:
-        try:
-            el = driver.find_element(By.CSS_SELECTOR, ".current-price span")
-            price = el.get_attribute("content") or el.text.strip()
-        except:
-            pass
-
-    # 3) fallback span.price
     if not price:
         try:
             el = driver.find_element(By.CSS_SELECTOR, "span.price")
@@ -94,7 +106,13 @@ def scrape():
         except:
             pass
 
-    # 4) meta[property=product:price:amount]
+    if not price:
+        try:
+            el = driver.find_element(By.CSS_SELECTOR, ".current-price span")
+            price = el.get_attribute("content") or el.text.strip()
+        except:
+            pass
+
     if not price:
         try:
             el = driver.find_element(By.CSS_SELECTOR, "meta[property='product:price:amount']")
@@ -102,40 +120,40 @@ def scrape():
         except:
             pass
 
-    # --- obrazek ---
+    # obraz
     try:
-        img = driver.find_element(By.CSS_SELECTOR, ".product-cover img, img.main-image")
+        img = driver.find_element(By.CSS_SELECTOR, ".product-cover img")
         image_url = img.get_attribute("src")
     except:
         image_url = None
 
-    # --- pozostałe atrybuty ---
-    difficulty    = get_difficulty_value(driver)
-    animal_status = get_animal_value(driver)
-    air_cleaning  = get_scale_value(driver, ".parm-cleaning")
-    sunlight      = get_scale_value(driver, ".parm-sun")
-    watering      = get_scale_value(driver, ".parm-water")
+    # inne atrybuty
+    difficulty      = get_difficulty_value(driver)
+    animal_status   = get_animal_value(driver)
+    air_cleaning    = get_scale_value(driver, ".parm-cleaning")
+    sunlight        = get_scale_value(driver, ".parm-sun")
+    watering        = get_scale_value(driver, ".parm-water")
 
     driver.quit()
 
-    result = {
-        "url": url,
-        "title": title,
-        "price": price,
-        "image_url": image_url,
-        "difficulty": difficulty,
-        "animal_status": animal_status,
-        "air_cleaning": air_cleaning,
-        "sunlight": sunlight,
-        "watering": watering,
+    out = {
+        "url":               url,
+        "short_description": short_description,
+        "care_instructions": care_instructions,
+        "price":             price,
+        "image_url":         image_url,
+        "difficulty":        difficulty,
+        "animal_status":     animal_status,
+        "air_cleaning":      air_cleaning,
+        "sunlight":          sunlight,
+        "watering":          watering,
     }
 
     return Response(
-        json.dumps(result, ensure_ascii=False, indent=2),
+        json.dumps(out, ensure_ascii=False, indent=2),
         mimetype="application/json"
     )
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 3000))
     app.run(host='0.0.0.0', port=port, debug=True)
-
