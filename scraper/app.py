@@ -12,6 +12,12 @@ app = Flask(__name__)
 app.config["PROPAGATE_EXCEPTIONS"] = True
 app.config["DEBUG"] = True
 
+# —————— dodaj ten health-check ——————
+@app.route('/', methods=['GET'])
+def healthz():
+    return 'OK', 200
+# ————————————————————————————————
+
 def get_difficulty_value(driver):
     try:
         el = driver.find_element(By.CSS_SELECTOR, "[class*='parm-difficulty-']")
