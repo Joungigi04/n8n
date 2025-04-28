@@ -9,8 +9,10 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 app = Flask(__name__)
-app.config["PROPAGATE_EXCEPTIONS"] = True
-app.config["DEBUG"] = True
+# Propagacja wyjątków wyłączona w prodzie
+# app.config["PROPAGATE_EXCEPTIONS"] = True
+# Debug wyłączony
+app.config["DEBUG"] = False
 
 # —————— Health-check endpoint ——————
 @app.route('/', methods=['GET'])
@@ -46,7 +48,6 @@ def get_scale_value(driver, selector):
         return None
 
 def get_short_description(driver):
-    # pierwszeństwo desktopowej wersji
     for sel in ("div.desktop-description-short p", "div.mobile-description-short p"):
         try:
             p = driver.find_element(By.CSS_SELECTOR, sel)
@@ -58,12 +59,10 @@ def get_short_description(driver):
     return None
 
 def get_care_instructions(driver):
-    # szukamy nagłówka <h3> zawierającego słowo "Pielęgnacja"
     elems = driver.find_elements(By.CSS_SELECTOR, "div.product-description h3")
     for h3 in elems:
         if "Pielęgnacja" in h3.text:
             try:
-                # pobieramy pierwszy <p> po tym nagłówku
                 p = h3.find_element(By.XPATH, "following-sibling::p[1]")
                 return p.text.strip()
             except:
@@ -77,7 +76,6 @@ def scrape():
     if not url:
         return jsonify({"error": "Brak URL"}), 400
 
-    # --- konfiguracja przeglądarki ---
     options = webdriver.ChromeOptions()
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
@@ -87,24 +85,20 @@ def scrape():
     service = Service(chromedriver_path)
     driver = webdriver.Chrome(service=service, options=options)
 
-    # --- otwieramy stronę i czekamy ---
     driver.get(url)
     WebDriverWait(driver, 10).until(
         EC.presence_of_element_located((By.TAG_NAME, "body"))
     )
 
-    # --- tytuł ---
     try:
         title_el = driver.find_element(By.CSS_SELECTOR, "h1.product-title, h1[itemprop='name'], h1")
         title = title_el.text.strip()
     except:
         title = None
 
-    # --- short description & care instructions ---
-    short_description     = get_short_description(driver)
-    care_instructions     = get_care_instructions(driver)
+    short_description = get_short_description(driver)
+    care_instructions = get_care_instructions(driver)
 
-    # --- cena ---
     price = None
     for sel in (
         "span[itemprop='price']",
@@ -120,19 +114,17 @@ def scrape():
         except:
             continue
 
-    # --- obrazek ---
     try:
         img = driver.find_element(By.CSS_SELECTOR, ".product-cover img, img.main-image")
         image_url = img.get_attribute("src")
     except:
         image_url = None
 
-    # --- pozostałe atrybuty ---
-    difficulty        = get_difficulty_value(driver)
-    animal_status     = get_animal_value(driver)
-    air_cleaning      = get_scale_value(driver, ".parm-cleaning")
-    sunlight          = get_scale_value(driver, ".parm-sun")
-    watering          = get_scale_value(driver, ".parm-water")
+    difficulty       = get_difficulty_value(driver)
+    animal_status    = get_animal_value(driver)
+    air_cleaning     = get_scale_value(driver, ".parm-cleaning")
+    sunlight         = get_scale_value(driver, ".parm-sun")
+    watering         = get_scale_value(driver, ".parm-water")
 
     driver.quit()
 
@@ -157,4 +149,6 @@ def scrape():
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 3000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    # W prodzie uruchamiaj przez Gunicorna, a nie flask run:
+    #   gunicorn app:app --bind 0.0.0.0:$PORT
+    app.run(host='0.0.0.0', port=port)
