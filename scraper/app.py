@@ -25,7 +25,8 @@ def get_animal_value(driver):
         el = driver.find_element(By.CSS_SELECTOR, "[class*='animal-']")
         cls = el.get_attribute("class")
         m = re.search(r"animal-(\d+)", cls)
-        if not m: return None
+        if not m:
+            return None
         return "Bezpieczna dla zwierząt" if m.group(1) == "0" else "Szkodliwa dla zwierząt"
     except:
         return None
@@ -45,41 +46,39 @@ def scrape():
     if not url:
         return jsonify({"error": "Brak URL"}), 400
 
-    opts = webdriver.ChromeOptions()
-    opts.add_argument("--headless")
-    opts.add_argument("--no-sandbox")
-    opts.add_argument("--disable-dev-shm-usage")
+    # --- konfiguracja przeglądarki ---
+    options = webdriver.ChromeOptions()
+    options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
 
-    # używamy systemowego chromedrivera, żeby wersje pasowały
-    from selenium.webdriver.chrome.service import Service
+    chromedriver_path = os.environ.get("CHROMEDRIVER_PATH", "/usr/bin/chromedriver")
+    service = Service(chromedriver_path)
+    driver = webdriver.Chrome(service=service, options=options)
 
-    # …
+    # --- otwieramy stronę i czekamy aż się załaduje ---
+    driver.get(url)
+    WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.TAG_NAME, "body"))
+    )
 
-    opts = webdriver.ChromeOptions()
-    opts.add_argument("--headless")
-    opts.add_argument("--no-sandbox")
-    opts.add_argument("--disable-dev-shm-usage")
+    # --- tytuł produktu ---
+    try:
+        title_el = driver.find_element(By.CSS_SELECTOR, "h1.product-title, h1[itemprop='name'], h1")
+        title = title_el.text.strip()
+    except:
+        title = None
 
-    service = Service("/usr/bin/chromedriver")
-    driver  = webdriver.Chrome(service=service, options=opts)
-
-
-
-    # ———- wyciąganie ceny ———-
+    # --- cena ---
     price = None
+    # 1) span[itemprop=price]
     try:
         el = driver.find_element(By.CSS_SELECTOR, "span[itemprop='price']")
         price = el.get_attribute("content") or el.text.strip()
     except:
         pass
 
-    if not price:
-        try:
-            el = driver.find_element(By.CSS_SELECTOR, "span.price")
-            price = el.text.strip()
-        except:
-            pass
-
+    # 2) fallback .current-price span
     if not price:
         try:
             el = driver.find_element(By.CSS_SELECTOR, ".current-price span")
@@ -87,6 +86,15 @@ def scrape():
         except:
             pass
 
+    # 3) fallback span.price
+    if not price:
+        try:
+            el = driver.find_element(By.CSS_SELECTOR, "span.price")
+            price = el.text.strip()
+        except:
+            pass
+
+    # 4) meta[property=product:price:amount]
     if not price:
         try:
             el = driver.find_element(By.CSS_SELECTOR, "meta[property='product:price:amount']")
@@ -94,14 +102,14 @@ def scrape():
         except:
             pass
 
-    # obraz
+    # --- obrazek ---
     try:
-        img = driver.find_element(By.CSS_SELECTOR, ".product-cover img")
+        img = driver.find_element(By.CSS_SELECTOR, ".product-cover img, img.main-image")
         image_url = img.get_attribute("src")
     except:
         image_url = None
 
-    # inne atrybuty
+    # --- pozostałe atrybuty ---
     difficulty    = get_difficulty_value(driver)
     animal_status = get_animal_value(driver)
     air_cleaning  = get_scale_value(driver, ".parm-cleaning")
@@ -110,8 +118,9 @@ def scrape():
 
     driver.quit()
 
-    out = {
+    result = {
         "url": url,
+        "title": title,
         "price": price,
         "image_url": image_url,
         "difficulty": difficulty,
@@ -122,8 +131,8 @@ def scrape():
     }
 
     return Response(
-        json.dumps(out, ensure_ascii=False, indent=2),
-        mimetype="application/json",
+        json.dumps(result, ensure_ascii=False, indent=2),
+        mimetype="application/json"
     )
 
 if __name__ == '__main__':
