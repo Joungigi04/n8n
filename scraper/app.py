@@ -51,9 +51,17 @@ def scrape():
     opts.add_argument("--disable-dev-shm-usage")
 
     # używamy systemowego chromedrivera, żeby wersje pasowały
-    driver = webdriver.Chrome(service=Service("/usr/bin/chromedriver"), options=opts)
-    driver.get(url)
-    WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+    from webdriver_manager.chrome import ChromeDriverManager
+    from webdriver_manager.core.utils import ChromeType
+    from selenium.webdriver.chrome.service import Service
+
+    driver = webdriver.Chrome(
+      service=Service(
+        ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install()
+      ),
+      options=opts
+    )
+
 
     # ———- wyciąganie ceny ———-
     price = None
