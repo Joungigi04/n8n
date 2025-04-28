@@ -12,7 +12,7 @@ app = Flask(__name__)
 app.config["PROPAGATE_EXCEPTIONS"] = True
 app.config["DEBUG"] = True
 
-# —————— dodaj ten health-check ——————
+# —————— Health-check endpoint ——————
 @app.route('/', methods=['GET'])
 def healthz():
     return 'OK', 200
@@ -45,6 +45,31 @@ def get_scale_value(driver, selector):
     except:
         return None
 
+def get_short_description(driver):
+    # pierwszeństwo desktopowej wersji
+    for sel in ("div.desktop-description-short p", "div.mobile-description-short p"):
+        try:
+            p = driver.find_element(By.CSS_SELECTOR, sel)
+            text = p.text.strip()
+            if text:
+                return text
+        except:
+            pass
+    return None
+
+def get_care_instructions(driver):
+    # szukamy nagłówka <h3> zawierającego słowo "Pielęgnacja"
+    elems = driver.find_elements(By.CSS_SELECTOR, "div.product-description h3")
+    for h3 in elems:
+        if "Pielęgnacja" in h3.text:
+            try:
+                # pobieramy pierwszy <p> po tym nagłówku
+                p = h3.find_element(By.XPATH, "following-sibling::p[1]")
+                return p.text.strip()
+            except:
+                pass
+    return None
+
 @app.route('/scrape', methods=['POST'])
 def scrape():
     data = request.get_json(force=True)
@@ -62,51 +87,38 @@ def scrape():
     service = Service(chromedriver_path)
     driver = webdriver.Chrome(service=service, options=options)
 
-    # --- otwieramy stronę i czekamy aż się załaduje ---
+    # --- otwieramy stronę i czekamy ---
     driver.get(url)
     WebDriverWait(driver, 10).until(
         EC.presence_of_element_located((By.TAG_NAME, "body"))
     )
 
-    # --- tytuł produktu ---
+    # --- tytuł ---
     try:
         title_el = driver.find_element(By.CSS_SELECTOR, "h1.product-title, h1[itemprop='name'], h1")
         title = title_el.text.strip()
     except:
         title = None
 
+    # --- short description & care instructions ---
+    short_description     = get_short_description(driver)
+    care_instructions     = get_care_instructions(driver)
+
     # --- cena ---
     price = None
-    # 1) span[itemprop=price]
-    try:
-        el = driver.find_element(By.CSS_SELECTOR, "span[itemprop='price']")
-        price = el.get_attribute("content") or el.text.strip()
-    except:
-        pass
-
-    # 2) fallback .current-price span
-    if not price:
+    for sel in (
+        "span[itemprop='price']",
+        ".current-price span",
+        "span.price",
+        "meta[property='product:price:amount']"
+    ):
+        if price:
+            break
         try:
-            el = driver.find_element(By.CSS_SELECTOR, ".current-price span")
-            price = el.get_attribute("content") or el.text.strip()
+            el = driver.find_element(By.CSS_SELECTOR, sel)
+            price = (el.get_attribute("content") or el.text).strip()
         except:
-            pass
-
-    # 3) fallback span.price
-    if not price:
-        try:
-            el = driver.find_element(By.CSS_SELECTOR, "span.price")
-            price = el.text.strip()
-        except:
-            pass
-
-    # 4) meta[property=product:price:amount]
-    if not price:
-        try:
-            el = driver.find_element(By.CSS_SELECTOR, "meta[property='product:price:amount']")
-            price = el.get_attribute("content")
-        except:
-            pass
+            continue
 
     # --- obrazek ---
     try:
@@ -116,17 +128,19 @@ def scrape():
         image_url = None
 
     # --- pozostałe atrybuty ---
-    difficulty    = get_difficulty_value(driver)
-    animal_status = get_animal_value(driver)
-    air_cleaning  = get_scale_value(driver, ".parm-cleaning")
-    sunlight      = get_scale_value(driver, ".parm-sun")
-    watering      = get_scale_value(driver, ".parm-water")
+    difficulty        = get_difficulty_value(driver)
+    animal_status     = get_animal_value(driver)
+    air_cleaning      = get_scale_value(driver, ".parm-cleaning")
+    sunlight          = get_scale_value(driver, ".parm-sun")
+    watering          = get_scale_value(driver, ".parm-water")
 
     driver.quit()
 
     result = {
         "url": url,
         "title": title,
+        "short_description": short_description,
+        "care_instructions": care_instructions,
         "price": price,
         "image_url": image_url,
         "difficulty": difficulty,
