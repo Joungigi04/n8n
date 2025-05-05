@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import shutil
 from flask import Flask, request, jsonify
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -11,7 +12,7 @@ from selenium.webdriver.support import expected_conditions as EC
 app = Flask(__name__)
 app.config["DEBUG"] = False
 
-# Health-check endpoint
+# Health‐check endpoint
 @app.route('/', methods=['GET'])
 def healthz():
     return 'OK', 200
@@ -45,23 +46,40 @@ def get_scale_value(driver, selector):
 @app.route('/scrape', methods=['POST'])
 def scrape():
     data = request.get_json(force=True)
-    url = data.get("url")
+    url  = data.get("url")
     if not url:
         return jsonify({"success": False, "error": "Brak URL"}), 200
 
-    # Chrome in headless mode, disable sandbox + disable-dev-shm, enable remote debugging
+    # 1) Detect Chrome/Chromium binary
+    chrome_path = os.environ.get("CHROME_BIN")
+    if not chrome_path:
+        for candidate in ("chromium", "chromium-browser", "google-chrome", "chrome"):
+            path = shutil.which(candidate)
+            if path:
+                chrome_path = path
+                break
+    if not chrome_path:
+        return jsonify({
+            "success": False,
+            "error": "Nie znaleziono przeglądarki Chrome/Chromium; "
+                     "ustaw ENV CHROME_BIN lub zainstaluj chromium."
+        }), 200
+
+    # 2) Prepare ChromeOptions
     options = webdriver.ChromeOptions()
+    options.binary_location = chrome_path
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-gpu")              # wyłącza GPU, czasem konieczne na headless
-    options.add_argument("--single-process")           # wymusza pojedynczy proces renderowania
-    options.add_argument("--disable-extensions")       # wyłącza rozszerzenia
-    options.add_argument("--window-size=1920,1080")    # niektóre strony potrzebują nadać wymiary
+    options.add_argument("--disable-gpu")
+    options.add_argument("--single-process")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--window-size=1920,1080")
 
+    # 3) Start WebDriver
     chromedriver_path = os.environ.get("CHROMEDRIVER_PATH", "/usr/bin/chromedriver")
     service = Service(chromedriver_path)
-    driver = None
+    driver  = None
 
     try:
         driver = webdriver.Chrome(service=service, options=options)
