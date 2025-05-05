@@ -40,20 +40,23 @@ def extract_image(soup):
             return url.strip()
     return None
 
-def extract_scale(soup, base_class):
+def extract_scale(soup, base):
     """
-    base_class e.g. 'parm-cleaning', 'parm-sun', 'parm-water'
-    Returns the number from either '<base_class>-X' or 'scale-X' in its classes.
+    Finds an element whose class attribute contains 'base' (e.g. 'parm-difficulty'
+    or 'parm-cleaning'), then returns:
+     - the number from 'base-X' if present, else
+     - the number from 'scale-X' if present.
     """
-    el = soup.select_one(f".{base_class}")
+    # select any element whose class string mentions the base
+    el = soup.select_one(f"[class*='{base}']")
     if not el:
         return None
     for cls in el.get("class", []):
-        # direct prefix match: parm-cleaning-1 etc.
-        m = re.match(rf"{re.escape(base_class)}-(\d+)", cls)
+        # first try direct prefix match (e.g. parm-difficulty-1)
+        m = re.match(rf"{re.escape(base)}-(\d+)", cls)
         if m:
             return m.group(1)
-        # or the scale form: scale-2 etc.
+        # then try scale-X
         m2 = re.match(r"scale-(\d+)", cls)
         if m2:
             return m2.group(1)
