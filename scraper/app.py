@@ -10,12 +10,21 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 app = Flask(__name__)
-app.config["DEBUG"] = False
 
-# Health‐check endpoint
-@app.route('/', methods=['GET'])
-def healthz():
-    return 'OK', 200
+def locate_chrome_binary():
+    # 1) Spróbuj ENV
+    env_path = os.environ.get("CHROME_BIN")
+    if env_path and shutil.which(env_path):
+        return env_path
+    # 2) Typowe nazwy
+    for name in ("chromium", "chromium-browser", "google-chrome", "chrome"):
+        p = shutil.which(name)
+        if p:
+            return p
+    raise RuntimeError(
+        "Nie znaleziono Chrome/Chromium. "
+        "Ustaw ENV CHROME_BIN lub zainstaluj chromium."
+    )
 
 def get_difficulty_value(driver):
     try:
@@ -29,9 +38,7 @@ def get_animal_value(driver):
     try:
         el = driver.find_element(By.CSS_SELECTOR, "[class*='animal-']")
         m = re.search(r"animal-(\d+)", el.get_attribute("class"))
-        if not m:
-            return None
-        return "Bezpieczna dla zwierząt" if m.group(1) == "0" else "Szkodliwa dla zwierząt"
+        return "Bezpieczna dla zwierząt" if m.group(1)=="0" else "Szkodliwa dla zwierząt"
     except:
         return None
 
@@ -50,35 +57,25 @@ def scrape():
     if not url:
         return jsonify({"success": False, "error": "Brak URL"}), 200
 
-    # 1) Detect Chrome/Chromium binary
-    chrome_path = os.environ.get("CHROME_BIN")
-    if not chrome_path:
-        for candidate in ("chromium", "chromium-browser", "google-chrome", "chrome"):
-            path = shutil.which(candidate)
-            if path:
-                chrome_path = path
-                break
-    if not chrome_path:
-        return jsonify({
-            "success": False,
-            "error": "Nie znaleziono przeglądarki Chrome/Chromium; "
-                     "ustaw ENV CHROME_BIN lub zainstaluj chromium."
-        }), 200
+    # 1) Znajdź binarkę
+    try:
+        chrome_bin = locate_chrome_binary()
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 200
 
-    # 2) Prepare ChromeOptions
+    # 2) Ustawcie opcje Chrome
     options = webdriver.ChromeOptions()
-    options.binary_location = chrome_path
+    options.binary_location = chrome_bin
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
-    options.add_argument("--single-process")
     options.add_argument("--disable-extensions")
     options.add_argument("--window-size=1920,1080")
+    # Kluczowa flaga, żeby za każdym razem użyć wolnego portu DevTools:
+    options.add_argument("--remote-debugging-port=0")
 
-    # 3) Start WebDriver
-    chromedriver_path = os.environ.get("CHROMEDRIVER_PATH", "/usr/bin/chromedriver")
-    service = Service(chromedriver_path)
+    service = Service(os.environ.get("CHROMEDRIVER_PATH", "/usr/bin/chromedriver"))
     driver  = None
 
     try:
@@ -88,7 +85,7 @@ def scrape():
             EC.presence_of_element_located((By.TAG_NAME, "body"))
         )
 
-        # --- price extraction ---
+        # --- price ---
         price = None
         for sel in (
             "span[itemprop='price']",
@@ -117,7 +114,7 @@ def scrape():
         sunlight      = get_scale_value(driver, ".parm-sun")
         watering      = get_scale_value(driver, ".parm-water")
 
-        result = {
+        return jsonify({
             "success": True,
             "url": url,
             "price": price,
@@ -127,11 +124,10 @@ def scrape():
             "air_cleaning": air_cleaning,
             "sunlight": sunlight,
             "watering": watering,
-        }
-        return jsonify(result), 200
+        }), 200
 
     except Exception as e:
-        # Catch everything, return JSON instead of HTTP 500
+        # zawsze zwróć success:false, nie HTTP 500
         return jsonify({"success": False, "error": str(e)}), 200
 
     finally:
@@ -141,8 +137,7 @@ def scrape():
             except:
                 pass
 
+# W Render.com użyj gunicorn: 
+#   gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 1
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 3000))
-    # In production launch via gunicorn:
-    # gunicorn app:app --bind 0.0.0.0:$PORT
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT",3000)), threaded=False)
