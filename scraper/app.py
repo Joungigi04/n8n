@@ -29,12 +29,12 @@ def extract_price(soup):
     return None
 
 def extract_image(soup):
-    # only the img inside .rc_ratio_list
+    # target only the <img> inside .rc_ratio_list
     el = soup.select_one(".rc_ratio_list img")
     if not el:
         return None
-    # check the correct attribute names
-    for attr in ("data-original", "data-src", "src"):
+    # prefer the zoom’s data‑orig‑src attribute
+    for attr in ("data‑orig‑src", "data-orig-src", "data-src", "src"):
         url = el.get(attr)
         if url:
             return url.strip()
