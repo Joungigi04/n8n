@@ -1,6 +1,7 @@
 import os
 import re
 import shutil
+import time
 from flask import Flask, request, jsonify
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -59,8 +60,9 @@ def scrape():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 200
 
-    # Stwórz unikalny katalog profilu w /tmp
-    profile_dir = f"/tmp/selenium_{os.getpid()}_{int(WebDriverWait.__module__)}"
+    # Utwórz unikalny katalog profilu z timestampem
+    timestamp = int(time.time() * 1000)
+    profile_dir = f"/tmp/selenium_{os.getpid()}_{timestamp}"
     os.makedirs(profile_dir, exist_ok=True)
 
     options = webdriver.ChromeOptions()
