@@ -54,6 +54,10 @@ def scrape():
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")              # wyłącza GPU, czasem konieczne na headless
+    options.add_argument("--single-process")           # wymusza pojedynczy proces renderowania
+    options.add_argument("--disable-extensions")       # wyłącza rozszerzenia
+    options.add_argument("--window-size=1920,1080")    # niektóre strony potrzebują nadać wymiary
 
     chromedriver_path = os.environ.get("CHROMEDRIVER_PATH", "/usr/bin/chromedriver")
     service = Service(chromedriver_path)
