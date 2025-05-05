@@ -1,13 +1,11 @@
 import os
 import re
-import time
-import shutil
 import logging
 import requests
 from flask import Flask, request, jsonify
 from bs4 import BeautifulSoup
 
-# ——— Logging ——————————————————————————————————————————
+# — Logging ——————————————————————————————————————————
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s %(levelname)s %(message)s"
@@ -17,7 +15,6 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 def extract_price(soup):
-    # próbujemy kilka selektorów
     for sel in (
         "span[itemprop='price']",
         ".current-price span",
@@ -25,38 +22,41 @@ def extract_price(soup):
         "meta[property='product:price:amount']"
     ):
         tag = soup.select_one(sel)
-        if not tag:
-            continue
-        val = tag.get("content") or tag.get_text()
-        if val:
-            return val.strip()
+        if tag:
+            val = tag.get("content") or tag.get_text()
+            if val:
+                return val.strip()
     return None
 
 def extract_image(soup):
-    # Select the <img> inside the .rc_ratio_list div (the one from your screenshot)
+    # only the img inside .rc_ratio_list
     el = soup.select_one(".rc_ratio_list img")
     if not el:
         return None
-    # Prefer the high-res attribute if present
-    for attr in ("data-original-src", "data-src", "src"):
+    # check the correct attribute names
+    for attr in ("data-original", "data-src", "src"):
         url = el.get(attr)
         if url:
             return url.strip()
     return None
 
-def extract_scale(soup, prefix):
+def extract_scale(soup, base_class):
     """
-    Finds any element whose class attribute contains "<prefix>-" 
-    (e.g. 'parm-difficulty-1', 'parm-cleaning scale-2', etc.),
-    then returns the number after that prefix.
+    base_class e.g. 'parm-cleaning', 'parm-sun', 'parm-water'
+    Returns the number from either '<base_class>-X' or 'scale-X' in its classes.
     """
-    el = soup.select_one(f"[class*='{prefix}-']")
+    el = soup.select_one(f".{base_class}")
     if not el:
         return None
     for cls in el.get("class", []):
-        m = re.match(rf"{re.escape(prefix)}-(\d+)", cls)
+        # direct prefix match: parm-cleaning-1 etc.
+        m = re.match(rf"{re.escape(base_class)}-(\d+)", cls)
         if m:
             return m.group(1)
+        # or the scale form: scale-2 etc.
+        m2 = re.match(r"scale-(\d+)", cls)
+        if m2:
+            return m2.group(1)
     return None
 
 @app.route('/', methods=['GET'])
@@ -67,9 +67,9 @@ def healthz():
 def scrape():
     data = request.get_json(force=True)
     url = data.get("url", "").strip()
-    logger.debug(f"🔎 scrape() start, url={url}")
     if not url:
         return jsonify(success=False, error="Brak URL"), 200
+    logger.debug(f"🔎 scrape() start, url={url}")
 
     try:
         resp = requests.get(
@@ -83,7 +83,7 @@ def scrape():
         logger.error(f"HTTP error: {e}")
         return jsonify(success=False, error=f"Fetch failed: {e}"), 200
 
-    # parse out fields
+    # Now extract everything
     price         = extract_price(soup)
     image_url     = extract_image(soup)
     difficulty    = extract_scale(soup, "parm-difficulty")
@@ -94,7 +94,10 @@ def scrape():
         for cls in animal_el.get("class", []):
             m = re.match(r"animal-(\d+)", cls)
             if m:
-                animal_status = "Bezpieczna dla zwierząt" if m.group(1) == "0" else "Szkodliwa dla zwierząt"
+                animal_status = (
+                    "Bezpieczna dla zwierząt" if m.group(1) == "0"
+                    else "Szkodliwa dla zwierząt"
+                )
                 break
 
     air_cleaning  = extract_scale(soup, "parm-cleaning")
@@ -102,18 +105,19 @@ def scrape():
     watering      = extract_scale(soup, "parm-water")
 
     result = {
-        "success":      True,
-        "url":          url,
-        "price":        price,
-        "image_url":    image_url,
-        "difficulty":   difficulty,
-        "animal_status":animal_status,
-        "air_cleaning": air_cleaning,
-        "sunlight":     sunlight,
-        "watering":     watering,
+        "success":       True,
+        "url":           url,
+        "price":         price,
+        "image_url":     image_url,
+        "difficulty":    difficulty,
+        "animal_status": animal_status,
+        "air_cleaning":  air_cleaning,
+        "sunlight":      sunlight,
+        "watering":      watering,
     }
     logger.debug(f"Scrape result: {result}")
     return jsonify(result), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 3000)), threaded=False)
+
