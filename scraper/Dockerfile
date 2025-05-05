@@ -26,8 +26,8 @@ RUN apt-get update && apt-get install -y \
 ENV CHROME_BIN=/usr/bin/chromium
 ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
 
-# install Python deps
-RUN pip install --no-cache-dir flask selenium
+# install Python deps (now including gunicorn)
+RUN pip install --no-cache-dir flask selenium gunicorn
 
 WORKDIR /app
 COPY scraper/app.py /app/
