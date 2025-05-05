@@ -33,26 +33,28 @@ def extract_price(soup):
     return None
 
 def extract_image(soup):
-    # 1) Spróbuj prawdziwy <img>
-    el = soup.select_one(".product-cover img, img.main-image")
-    if el and el.get("src"):
-        return el["src"]
-    # 2) Fallback: div z inline background-image
-    div = soup.select_one("div[style*='background-image']")
-    if div:
-        style = div.get("style", "")
-        m = re.search(r"background-image:\s*url\(['\"]?(.*?)['\"]?\)", style)
-        if m:
-            return m.group(1)
+    # Select the <img> inside the .rc_ratio_list div (the one from your screenshot)
+    el = soup.select_one(".rc_ratio_list img")
+    if not el:
+        return None
+    # Prefer the high-res attribute if present
+    for attr in ("data-original-src", "data-src", "src"):
+        url = el.get(attr)
+        if url:
+            return url.strip()
     return None
 
 def extract_scale(soup, prefix):
-    # uniwersalne dla parm-cleaning, parm-sun, parm-water
-    el = soup.select_one(f".{prefix}")
+    """
+    Finds any element whose class attribute contains "<prefix>-" 
+    (e.g. 'parm-difficulty-1', 'parm-cleaning scale-2', etc.),
+    then returns the number after that prefix.
+    """
+    el = soup.select_one(f"[class*='{prefix}-']")
     if not el:
         return None
     for cls in el.get("class", []):
-        m = re.match(rf"{prefix}-(\d+)", cls)
+        m = re.match(rf"{re.escape(prefix)}-(\d+)", cls)
         if m:
             return m.group(1)
     return None
@@ -95,9 +97,9 @@ def scrape():
                 animal_status = "Bezpieczna dla zwierząt" if m.group(1) == "0" else "Szkodliwa dla zwierząt"
                 break
 
-    air_cleaning = extract_scale(soup, "parm-cleaning")
-    sunlight     = extract_scale(soup, "parm-sun")
-    watering     = extract_scale(soup, "parm-water")
+    air_cleaning  = extract_scale(soup, "parm-cleaning")
+    sunlight      = extract_scale(soup, "parm-sun")
+    watering      = extract_scale(soup, "parm-water")
 
     result = {
         "success":      True,
