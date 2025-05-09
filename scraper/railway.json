@@ -1,6 +1,5 @@
 {
   "build": {
-    "dockerfilePath": "scraper/Dockerfile",
-    "context": "scraper"
+    "builder": "docker"
   }
 }

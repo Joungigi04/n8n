@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir \
     gunicorn
 
 WORKDIR /app
-COPY scraper/app.py /app/
+COPY app.py /app/
 
 EXPOSE 3000
 
